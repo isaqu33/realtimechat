@@ -38,7 +38,22 @@ docker compose up -d --build
 - App: http://127.0.0.1:3090
 - API: http://127.0.0.1:3091 (`/health`)
 
-Abra uma segunda janela anônima, crie duas contas fictícias e converse. Se criar a segunda conta depois de abrir a primeira, use **Atualizar**. Para zerar os dados: `docker compose down -v`.
+### Contas de demonstração (seed)
+
+Para não precisar cadastrar nada, popule duas contas fictícias com uma conversa de exemplo:
+
+```sh
+docker compose exec api npm run seed
+```
+
+| Usuário | E-mail | Senha |
+|---|---|---|
+| Ana Demo | `ana@demo.dev` | `demo12345` |
+| Bruno Demo | `bruno@demo.dev` | `demo12345` |
+
+Entre como Ana numa janela normal e como Bruno numa janela anônima, e troque mensagens entre os dois. O seed é idempotente (pode rodar mais de uma vez). Sem Docker: `cd back-end && npm run seed`.
+
+Se preferir, crie suas próprias contas fictícias. Se uma conta for criada depois de a outra janela já estar aberta, use **Atualizar**. Para zerar os dados: `docker compose down -v`.
 
 As portas (3090/3091) foram escolhidas para não colidir com outros projetos locais; mude com `WEB_PORT_HOST` e `API_PORT_HOST` no `.env`.
 
