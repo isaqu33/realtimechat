@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: back-end } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: back-end/package-lock.json }
       - run: npm ci
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: front-end } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: front-end/package-lock.json }
       - run: npm ci
@@ -31,6 +31,6 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker compose build
         env: { JWT_SECRET: ci-only-secret-with-more-than-32-characters }
