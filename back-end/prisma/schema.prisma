@@ -6,7 +6,7 @@
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -17,9 +17,7 @@ model User {
   id        Int       @id @default(autoincrement())
   name      String
   email     String    @unique
-  password String
-  photourl String?
-  isOnline Boolean @default(false)
+  password  String
   createdAt DateTime @default(now())
   sentMessages    Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
@@ -29,12 +27,9 @@ model Message {
   id        Int      @id @default(autoincrement())
   senderId  Int
   receiverId Int
-  content   String
+  content   String // AES-256-GCM em base64 (tag + texto cifrado)
   timestamp DateTime @default(now())
-  iv String
-
-  deletedBySender  Boolean @default(false)
-  deletedByReceiver Boolean @default(false)
+  iv        String
 
   sender    User @relation("SentMessages", fields: [senderId], references: [id])
   receiver  User @relation("ReceivedMessages", fields: [receiverId], references: [id])
