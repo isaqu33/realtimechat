@@ -1,7 +1,7 @@
 import { get, writable } from "svelte/store";
 import { env } from "$env/dynamic/public";
 import { io, type Socket } from "socket.io-client";
-import type { Message, Session, User } from "./types";
+import type { Message, Outgoing, Session, User } from "./types";
 
 const api = env.PUBLIC_API_URL || "http://127.0.0.1:3000";
 const TYPING_VISIBLE_MS = 1800;
@@ -15,7 +15,9 @@ export const error = writable("");
 export const status = writable("");
 export const connected = writable(false);
 export const typing = writable(false);
-export const sending = writable(false);
+export const outbox = writable<Outgoing[]>([]);
+/** Mensagens não lidas por contato (id do contato → quantidade). */
+export const unread = writable<Record<number, number>>({});
 
 let socket: Socket | undefined;
 let typingTimer: ReturnType<typeof setTimeout>;
@@ -47,6 +49,7 @@ export function merge(history: Message[], incoming: Message[]) {
 export async function choose(user: User) {
   if (get(peer)?.id !== user.id) messages.set([]);
   peer.set(user);
+  unread.update(counts => ({ ...counts, [user.id]: 0 }));
   typing.set(false);
   const version = ++conversationVersion;
   try {
@@ -96,8 +99,11 @@ export async function signIn(creds: { name: string; email: string; password: str
   });
   connection.on("message", (message: Message) => {
     const open = get(peer);
+    if (message.clientId) outbox.update(list => list.filter(item => item.clientId !== message.clientId));
     if (open && [message.senderId, message.receiverId].includes(open.id)) {
       messages.update(list => merge(list, [message]));
+    } else if (message.senderId !== get(session)?.user.id) {
+      unread.update(counts => ({ ...counts, [message.senderId]: (counts[message.senderId] ?? 0) + 1 }));
     }
   });
   connection.on("typing", ({ senderId }: { senderId: number }) => {
@@ -119,6 +125,8 @@ export function signOut() {
   error.set("");
   connected.set(false);
   typing.set(false);
+  outbox.set([]);
+  unread.set({});
   ++conversationVersion;
   clearTimeout(typingTimer);
 }
@@ -130,22 +138,47 @@ export function notifyTyping() {
   socket?.volatile.emit("typing", { receiverId: open.id });
 }
 
-/** Devolve true quando o servidor confirmou o envio (o chamador então limpa o campo). */
-export async function send(content: string) {
-  const open = get(peer);
+// randomUUID só existe em contexto seguro (https/localhost); o fallback cobre acesso por IP da rede local.
+const newId = () => globalThis.crypto?.randomUUID?.() ?? `m-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+function transmit(item: Outgoing) {
   const current = get(session);
-  if (!socket || !open || !get(connected) || !content.trim() || get(sending)) return false;
-  sending.set(true);
+  const mark = (status: Outgoing["status"]) => {
+    if (current === get(session)) outbox.update(list => list.map(x => x.clientId === item.clientId ? { ...x, status } : x));
+  };
+  mark("sending");
   error.set("");
-  try {
-    const result = await socket.timeout(5000).emitWithAck("message", { receiverId: open.id, content });
-    if (current !== get(session)) return false;
-    if (result.error) { error.set(result.error); return false; }
-    return true;
-  } catch {
-    if (current === get(session)) error.set("Envio sem confirmação. Confira o histórico antes de tentar novamente.");
-    return false;
-  } finally {
-    sending.set(false);
-  }
+  socket?.timeout(5000).emitWithAck("message", {
+    receiverId: item.receiverId, content: item.content, clientId: item.clientId,
+  }).then(result => {
+    if (!result.error) return; // sucesso: o evento "message" já trocou a bolha pela confirmada
+    if (current === get(session)) error.set(result.error);
+    mark("failed");
+  }).catch(() => mark("failed"));
 }
+
+/** Envio otimista: a mensagem aparece na hora e é confirmada (ou marcada como falha) depois. */
+export function send(content: string) {
+  const open = get(peer);
+  const text = content.trim();
+  if (!socket || !open || !get(connected) || !text) return false;
+  const item: Outgoing = { clientId: newId(), receiverId: open.id, content: text, status: "sending" };
+  outbox.update(list => [...list, item]);
+  transmit(item);
+  return true;
+}
+
+/** Reenvia com o mesmo clientId: o servidor ignora duplicata se a primeira tentativa chegou. */
+export function retry(clientId: string) {
+  const item = get(outbox).find(x => x.clientId === clientId);
+  if (item && get(connected)) transmit(item);
+}
+
+export function discard(clientId: string) {
+  outbox.update(list => list.filter(x => x.clientId !== clientId));
+}
+
+const DEMO = { ana: { email: "ana@demo.dev", name: "Ana Demo" }, bruno: { email: "bruno@demo.dev", name: "Bruno Demo" } };
+export const demoEnabled = env.PUBLIC_DEMO_LOGIN === "true";
+export const demoAccounts = Object.values(DEMO);
+export const DEMO_PASSWORD = "demo12345";

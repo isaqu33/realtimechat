@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { error, signIn } from "$lib/chat";
+  import { DEMO_PASSWORD, demoAccounts, demoEnabled, error, signIn } from "$lib/chat";
+  import Avatar from "$lib/Avatar.svelte";
 
   let signingUp = false;
   let pending = false;
@@ -7,10 +8,10 @@
   let email = "";
   let password = "";
 
-  async function submit() {
+  async function run(creds: { name: string; email: string; password: string }, up: boolean) {
     pending = true;
     try {
-      await signIn({ name, email, password }, signingUp);
+      await signIn(creds, up);
       password = "";
     } catch (cause) {
       error.set(cause instanceof Error ? cause.message : "Falha ao entrar.");
@@ -22,8 +23,7 @@
 
 <section class="card">
   <h2>{signingUp ? "Criar conta" : "Entrar"}</h2>
-  <p class="hint">Abra uma segunda janela anônima, crie outra conta fictícia e troque mensagens entre as duas.</p>
-  <form on:submit|preventDefault={submit}>
+  <form on:submit|preventDefault={() => run({ name, email, password }, signingUp)}>
     {#if signingUp}<label>Nome <input bind:value={name} maxlength="60" autocomplete="name" required></label>{/if}
     <label>E-mail <input type="email" bind:value={email} maxlength="120" autocomplete="email" required></label>
     <label>Senha
@@ -31,18 +31,34 @@
         autocomplete={signingUp ? "new-password" : "current-password"} required>
     </label>
     <button class="primary" disabled={pending}>{signingUp ? "Criar conta" : "Entrar"}</button>
-    <button type="button" class="link" disabled={pending} on:click={() => { signingUp = !signingUp; error.set(""); }}>
-      {signingUp ? "Já tenho conta" : "Criar conta fictícia"}
-    </button>
   </form>
+  <button type="button" class="ghost toggle" disabled={pending} on:click={() => { signingUp = !signingUp; error.set(""); }}>
+    {signingUp ? "Já tenho conta" : "Criar conta fictícia"}
+  </button>
+
+  {#if demoEnabled}
+    <div class="demo">
+      <p>Ou entre direto com uma conta de demonstração:</p>
+      {#each demoAccounts as account}
+        <button type="button" class="demo-btn" disabled={pending}
+          on:click={() => run({ name: "", email: account.email, password: DEMO_PASSWORD }, false)}>
+          <Avatar name={account.name} size={30} /> Entrar como {account.name}
+        </button>
+      {/each}
+      <small>Dica: use uma conta numa janela normal e a outra numa janela anônima.</small>
+    </div>
+  {/if}
 </section>
 
 <style>
-  .card { max-width: 400px; margin: 8vh auto 0; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
-  h2 { margin: 0 0 6px; font-size: 1.3rem; }
-  .hint { margin: 0 0 18px; color: var(--muted); font-size: .9rem; }
-  label { display: block; margin: 12px 0; font-size: .85rem; font-weight: 600; }
-  input { margin-top: 4px; }
-  .primary { width: 100%; margin-top: 8px; }
-  .link { display: block; margin: 14px auto 0; background: none; border: 0; color: var(--accent); text-decoration: underline; }
+  .card { width: 100%; max-width: 390px; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); }
+  h2 { margin: 0 0 14px; font-size: 1.3rem; }
+  label { display: block; margin: 0 0 12px; font-size: .8rem; font-weight: 600; color: var(--muted); }
+  input { margin-top: 5px; color: var(--text); }
+  form .primary { width: 100%; margin-top: 4px; padding: 11px; }
+  .toggle { display: block; margin: 10px auto 0; font-size: .85rem; }
+  .demo { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+  .demo p { margin: 0; font-size: .82rem; color: var(--muted); }
+  .demo-btn { display: flex; align-items: center; gap: 10px; text-align: left; }
+  small { color: var(--muted); font-size: .75rem; }
 </style>

@@ -105,6 +105,18 @@ test("presença: avisa quando entra e quando sai; /users reflete o estado", asyn
   assert.deepEqual(await left, { userId: beto.id, online: false });
 });
 
+test("clientId volta no evento e reenvio com o mesmo clientId não duplica", async () => {
+  const [a, b] = await Promise.all([api.socketFor(ana.token), api.socketFor(beto.token)]);
+  const first = next(b, "message");
+  const payload = { receiverId: beto.id, content: "só uma vez", clientId: "abc-12345678" };
+  assert.deepEqual(await send(a, payload), { ok: true });
+  assert.equal((await first).clientId, "abc-12345678");
+  assert.deepEqual(await send(a, payload), { ok: true, duplicate: true });
+  const { body } = await api.call(`/messages/${ana.id}`, { token: beto.token });
+  assert.equal(body.filter(message => message.content === "só uma vez").length, 1);
+  assert.ok((await send(a, { receiverId: beto.id, content: "x", clientId: "curto" })).error);
+});
+
 test("limite de mensagens por janela de tempo", async () => {
   const limited = await startServer({ authMax: 1000, messagesMax: 3, windowMs: 60_000 });
   try {

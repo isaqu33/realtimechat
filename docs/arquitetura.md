@@ -45,6 +45,21 @@ sequenceDiagram
 - **Senha de até 72 bytes.** É o limite do bcrypt; acima disso a API recusa em vez de truncar em silêncio.
 - **SQLite + Prisma.** Zero configuração para uma demo. A troca por Postgres é só o `provider` e a `DATABASE_URL`.
 
+## Envio otimista e idempotência
+
+1. O front gera um `clientId`, mostra a bolha como "enviando…" e emite `message` com ack.
+2. O servidor grava, e emite `message` (com o mesmo `clientId`) para as duas salas; o front troca a bolha pendente pela confirmada.
+3. Se o ack não chega (queda de rede), a bolha vira "não enviada" com **Tentar de novo**. O reenvio usa o mesmo `clientId`; o servidor lembra dos últimos 100 ids de cada usuário e responde `{ok, duplicate}` sem gravar de novo.
+
+Limite: a memória de ids é por processo; com várias instâncias seria uma chave única no banco ou Redis.
+
+## Próximos passos possíveis
+
+- Confirmação de leitura (cursor "lido até" por conversa) e estados enviada/entregue/lida.
+- Paginação do histórico com rolagem infinita.
+- Redis adapter do Socket.IO e rate limit compartilhado, para rodar com várias instâncias.
+- Reações e anexos.
+
 ## Limites conhecidos (fora do escopo da demo)
 
 - Rate limit em memória: com várias instâncias seria preciso um store compartilhado (Redis) e o adapter do Socket.IO.
