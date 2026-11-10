@@ -1,0 +1,49 @@
+name: realtimechat
+
+# Portas do host escolhidas para não colidir com os outros projetos locais
+# (3000-3001, 3020, 3030, 3070-3071, 3100, 3300-3302, 3400, 3470, 27xxx, 6xxx, 8xxx, 10xxx).
+services:
+  api:
+    container_name: realtimechat-api
+    build: ./back-end
+    ports:
+      - '${API_PORT_HOST:-3091}:3000'
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env (veja .env.example)}
+      DATABASE_URL: file:/data/chat.db
+      HOST: 0.0.0.0
+      PORT: 3000
+      FRONTEND_ORIGIN: http://127.0.0.1:${WEB_PORT_HOST:-3090}
+    volumes:
+      - chat_data:/data
+    networks:
+      - realtimechat-network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    container_name: realtimechat-web
+    build: ./front-end
+    ports:
+      - '${WEB_PORT_HOST:-3090}:3000'
+    environment:
+      # Endereço da API como o NAVEGADOR enxerga (porta publicada no host).
+      PUBLIC_API_URL: http://127.0.0.1:${API_PORT_HOST:-3091}
+    networks:
+      - realtimechat-network
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  realtimechat-network:
+    name: realtimechat-network
+    driver: bridge
+
+volumes:
+  chat_data:
