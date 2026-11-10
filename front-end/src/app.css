@@ -1,0 +1,21 @@
+:root {
+  --bg: #f6f6f1; --surface: #fff; --line: #dcdfd2; --text: #152b32; --muted: #66756c;
+  --accent: #2f6f4f; --accent-soft: #e2efe6; --bubble: #eceee6;
+  --danger: #a3261c; --danger-soft: #fbe7e4;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11181b; --surface: #182226; --line: #2a373c; --text: #e6ece8; --muted: #93a39a;
+    --accent: #3f9468; --accent-soft: #1f3a2d; --bubble: #243238;
+    --danger: #ff9b90; --danger-soft: #3a1f1c;
+  }
+}
+body { margin: 0; font: 1rem/1.5 system-ui, sans-serif; color: var(--text); background: var(--bg); }
+input, button { font: inherit; box-sizing: border-box; }
+input { width: 100%; padding: 9px 12px; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+button { cursor: pointer; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); color: inherit; background: transparent; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.ghost { font-size: .85rem; padding: 5px 10px; }
+button:disabled { cursor: default; opacity: .55; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
