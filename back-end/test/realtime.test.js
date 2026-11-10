@@ -130,3 +130,45 @@ test("limite de mensagens por janela de tempo", async () => {
     await limited.close();
   }
 });
+
+test("confirmação de leitura: recibo ao remetente, histórico e contador de não lidas", async () => {
+  const x = await api.signUp("Leitor"), y = await api.signUp("Autor");
+  const [sx, sy] = await Promise.all([api.socketFor(x.token), api.socketFor(y.token)]);
+  await send(sy, { receiverId: x.id, content: "leia isto" });
+  await send(sy, { receiverId: x.id, content: "e isto" });
+
+  let { body } = await api.call("/users", { token: x.token });
+  assert.equal(body.find(user => user.id === y.id).unread, 2);
+  let history = (await api.call(`/messages/${x.id}`, { token: y.token })).body;
+  assert.equal(history.every(message => message.readAt === null), true);
+
+  const receipt = next(sy, "read");
+  sx.emit("read", { peerId: y.id });
+  const event = await receipt;
+  assert.equal(event.readerId, x.id);
+  assert.equal(event.upTo, history.at(-1).id);
+
+  history = (await api.call(`/messages/${x.id}`, { token: y.token })).body;
+  assert.equal(history.every(message => message.readAt), true);
+  ({ body } = await api.call("/users", { token: x.token }));
+  assert.equal(body.find(user => user.id === y.id).unread, 0);
+});
+
+test("read inválido ou sem mensagens não gera evento nem erro", async () => {
+  const x = await api.signUp("Quieto"), y = await api.signUp("Outro");
+  const [sx, sy] = await Promise.all([api.socketFor(x.token), api.socketFor(y.token)]);
+  const quiet = silent(sy, "read");
+  for (const peerId of ["1", -1, 0, x.id, 99999, null]) sx.emit("read", { peerId });
+  sx.emit("read");
+  assert.equal(await quiet, true);
+});
+
+test("ninguém marca como lidas as mensagens de outra conversa", async () => {
+  const x = await api.signUp("Alvo"), y = await api.signUp("Remetente"), z = await api.signUp("Intruso");
+  const [sy, sz] = await Promise.all([api.socketFor(y.token), api.socketFor(z.token)]);
+  await send(sy, { receiverId: x.id, content: "só para o alvo" });
+  sz.emit("read", { peerId: y.id }); // z não é o destinatário
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const history = (await api.call(`/messages/${x.id}`, { token: y.token })).body;
+  assert.equal(history[0].readAt, null);
+});

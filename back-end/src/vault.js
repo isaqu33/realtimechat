@@ -31,6 +31,7 @@ export function createVault(secret) {
       receiverId: message.receiverId,
       content,
       timestamp: message.timestamp,
+      readAt: message.readAt ?? null,
     };
   }
 

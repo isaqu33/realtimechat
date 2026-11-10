@@ -67,7 +67,7 @@ test("/users lista os outros usuários, sem o próprio e sem dados sensíveis", 
   const { body } = await api.call("/users", { token: ana.token });
   assert.ok(body.length >= 1);
   assert.equal(body.some(user => user.id === ana.id), false);
-  assert.deepEqual(Object.keys(body[0]).sort(), ["id", "name", "online"]);
+  assert.deepEqual(Object.keys(body[0]).sort(), ["id", "name", "online", "unread"]);
 });
 
 test("/messages valida o contato", async () => {

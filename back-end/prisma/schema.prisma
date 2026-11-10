@@ -30,6 +30,9 @@ model Message {
   content   String // AES-256-GCM em base64 (tag + texto cifrado)
   timestamp DateTime @default(now())
   iv        String
+  readAt    DateTime? // preenchido quando o destinatário abre a conversa
+
+  @@index([receiverId, senderId, readAt])
 
   sender    User @relation("SentMessages", fields: [senderId], references: [id])
   receiver  User @relation("ReceivedMessages", fields: [receiverId], references: [id])

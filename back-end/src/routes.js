@@ -55,7 +55,14 @@ export function createRoutes({ prisma, auth, vault, isOnline, limits }) {
       orderBy: { name: "asc" },
       take: 100,
     });
-    res.json(users.map(user => ({ ...user, online: isOnline(user.id) })));
+    // Não lidas por remetente, numa consulta só (evita N+1).
+    const counts = await prisma.message.groupBy({
+      by: ["senderId"],
+      where: { receiverId: req.identity.userId, readAt: null },
+      _count: { _all: true },
+    });
+    const unread = new Map(counts.map(row => [row.senderId, row._count._all]));
+    res.json(users.map(user => ({ ...user, online: isOnline(user.id), unread: unread.get(user.id) ?? 0 })));
   }));
 
   router.get("/messages/:peer", auth.authenticate, asyncRoute(async (req, res) => {

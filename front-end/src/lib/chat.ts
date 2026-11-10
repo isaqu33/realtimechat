@@ -46,6 +46,17 @@ export function merge(history: Message[], incoming: Message[]) {
     .sort((a, b) => a.id - b.id);
 }
 
+/** Avisa o servidor que a conversa aberta foi lida (só com a aba visível e algo pendente). */
+function markRead() {
+  const open = get(peer);
+  if (!socket || !open || !get(connected) || document.visibilityState !== "visible") return;
+  if (!get(unread)[open.id]) return;
+  unread.update(counts => ({ ...counts, [open.id]: 0 }));
+  socket.emit("read", { peerId: open.id });
+}
+
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", markRead);
+
 export async function choose(user: User) {
   if (get(peer)?.id !== user.id) messages.set([]);
   peer.set(user);
@@ -54,7 +65,14 @@ export async function choose(user: User) {
   const version = ++conversationVersion;
   try {
     const history: Message[] = await request(`/messages/${user.id}`);
-    if (version === conversationVersion) messages.update(live => merge(history, live));
+    if (version === conversationVersion) {
+      messages.update(live => merge(history, live));
+      // O servidor é a fonte da verdade das não lidas; ao abrir, marcamos tudo como lido.
+      if (history.some(m => m.senderId === user.id && !m.readAt)) {
+        unread.update(counts => ({ ...counts, [user.id]: 1 }));
+        markRead();
+      }
+    }
   } catch {
     if (version === conversationVersion) error.set("Não foi possível carregar o histórico.");
   }
@@ -64,7 +82,9 @@ export async function refreshContacts() {
   const current = get(session);
   try {
     const people = await request("/users");
-    if (current === get(session)) contacts.set(people);
+    if (current !== get(session)) return;
+    contacts.set(people);
+    unread.set(Object.fromEntries(people.map((user: User) => [user.id, user.unread ?? 0])));
   } catch {
     if (current === get(session)) error.set("Não foi possível carregar os contatos.");
   }
@@ -102,8 +122,21 @@ export async function signIn(creds: { name: string; email: string; password: str
     if (message.clientId) outbox.update(list => list.filter(item => item.clientId !== message.clientId));
     if (open && [message.senderId, message.receiverId].includes(open.id)) {
       messages.update(list => merge(list, [message]));
+      if (message.senderId === open.id) {
+        unread.update(counts => ({ ...counts, [open.id]: 1 }));
+        markRead();
+      }
     } else if (message.senderId !== get(session)?.user.id) {
       unread.update(counts => ({ ...counts, [message.senderId]: (counts[message.senderId] ?? 0) + 1 }));
+    }
+  });
+  connection.on("read", ({ readerId, peerId, upTo, readAt }: { readerId: number; peerId: number; upTo: number; readAt: string }) => {
+    const me = get(session)?.user.id;
+    if (readerId === me) {
+      unread.update(counts => ({ ...counts, [peerId]: 0 })); // outra aba minha leu
+    } else {
+      // O destinatário leu: marca as minhas mensagens até `upTo` como lidas.
+      messages.update(list => list.map(m => m.senderId === me && m.receiverId === readerId && m.id <= upTo ? { ...m, readAt } : m));
     }
   });
   connection.on("typing", ({ senderId }: { senderId: number }) => {

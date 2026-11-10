@@ -7,10 +7,10 @@
   let draft = "";
   let list: HTMLElement;
 
-  type Row = { key: string; self: boolean; content: string; at?: string; status?: "sending" | "failed"; clientId?: string };
+  type Row = { key: string; self: boolean; content: string; at?: string; read?: boolean; status?: "sending" | "failed"; clientId?: string };
 
   $: rows = [
-    ...$messages.map(m => ({ key: `m${m.id}`, self: m.senderId === $session?.user.id, content: m.content, at: m.timestamp }) as Row),
+    ...$messages.map(m => ({ key: `m${m.id}`, self: m.senderId === $session?.user.id, content: m.content, at: m.timestamp, read: !!m.readAt }) as Row),
     ...$outbox.filter(o => o.receiverId === $peer?.id).map(o => ({ key: o.clientId, self: true, content: o.content, status: o.status, clientId: o.clientId }) as Row),
   ];
 
@@ -54,7 +54,8 @@
             <span class="meta">
               {#if row.status === "sending"}enviando…
               {:else if row.status === "failed"}não enviada
-              {:else if row.at}{time(row.at)}{/if}
+              {:else if row.at}{time(row.at)}{#if row.self}
+                <span class="ticks" class:read={row.read} role="img" aria-label={row.read ? "lida" : "enviada"}>{row.read ? "✓✓" : "✓"}</span>{/if}{/if}
             </span>
           </div>
           {#if row.status === "failed" && row.clientId}
@@ -96,7 +97,9 @@
   .bubble { max-width: min(78%, 560px); padding: 8px 12px 6px; background: var(--bubble); border-radius: 18px 18px 18px 5px; }
   .self .bubble { background: var(--bubble-self); color: #fff; border-radius: 18px 18px 5px 18px; }
   .text { display: block; overflow-wrap: anywhere; white-space: pre-wrap; }
-  .meta { display: block; margin-top: 1px; font-size: .68rem; text-align: right; opacity: .7; }
+  .meta { display: block; margin-top: 1px; font-size: .68rem; text-align: right; color: color-mix(in srgb, currentColor 70%, transparent); }
+  .ticks { margin-left: 4px; letter-spacing: -.12em; }
+  .ticks.read { color: #7dffc0; font-weight: 700; }
   .bubble.pending { opacity: .65; }
   .bubble.failed { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger); }
   .actions { display: flex; gap: 2px; }

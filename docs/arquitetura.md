@@ -53,9 +53,16 @@ sequenceDiagram
 
 Limite: a memória de ids é por processo; com várias instâncias seria uma chave única no banco ou Redis.
 
+## Confirmação de leitura
+
+- `Message.readAt` é preenchido quando o destinatário abre a conversa (evento `read {peerId}`). O servidor marca tudo que o `peerId` enviou até o maior id pendente, e emite `read {readerId, peerId, upTo}` para o remetente (que mostra ✓✓) e para as outras abas do leitor (que zeram o contador).
+- O leitor sempre vem do token, então ninguém marca como lida uma conversa que não é sua.
+- O front só envia `read` com a aba visível; ao voltar para a aba, marca o que chegou enquanto estava oculta.
+- As não lidas vêm do banco (`GET /users`, uma consulta `groupBy`), então sobrevivem a reload e a novos logins.
+
 ## Próximos passos possíveis
 
-- Confirmação de leitura (cursor "lido até" por conversa) e estados enviada/entregue/lida.
+- Estado "entregue" (hoje há enviada e lida) e cursor "lido até" por conversa no lugar de `readAt` por mensagem.
 - Paginação do histórico com rolagem infinita.
 - Redis adapter do Socket.IO e rate limit compartilhado, para rodar com várias instâncias.
 - Reações e anexos.

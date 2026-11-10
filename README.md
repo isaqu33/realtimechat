@@ -23,11 +23,11 @@ Chat de mensagens privadas em tempo real: cadastro, lista de contatos com presen
 
 | Área | O que foi aplicado |
 |---|---|
-| **Tempo real** | Socket.IO com salas por usuário, presença multi-aba, "digitando…" e contador de não lidas |
+| **Tempo real** | Socket.IO com salas por usuário, presença multi-aba, "digitando…" e contador de não lidas persistente e **confirmação de leitura** (✓ enviada, ✓✓ lida) |
 | **Confiabilidade** | envio otimista (a bolha aparece na hora), falha com "Tentar de novo" e **idempotência por `clientId`**: reenviar após uma queda não duplica a mensagem |
 | **Interface** | tema claro, escuro ou automático (sem piscar ao carregar), layout responsivo (lista ↔ conversa no celular), separadores de dia, avatares, acessível por teclado |
 | **Segurança** | JWT validado no socket (o remetente vem do token, não do payload), CORS/origem restritos, Helmet, rate limit em login/cadastro e por socket, limites de tamanho, bcrypt, mensagens com AES-256-GCM, respostas anti-enumeração |
-| **Testes** | 26 testes com servidor real e SQLite temporário: cifra, auth, isolamento entre usuários, presença, limites |
+| **Testes** | 29 testes com servidor real e SQLite temporário: cifra, auth, isolamento entre usuários, presença, limites |
 | **Arquitetura** | back-end modular (`config`, `auth`, `vault`, `routes`, `sockets`), front com estado em stores e componentes pequenos |
 | **Operação** | Docker Compose (API + web), logs JSON (Pino) sem tokens, `/health`, encerramento gracioso, CI no GitHub Actions |
 
@@ -96,11 +96,11 @@ cd front-end && npm run check
 |---|---|
 | `POST /register` | `{name, email, password}` (senha de 8 a 72 bytes) |
 | `POST /login` | devolve `{token, user}` (JWT de 50 min) |
-| `GET /users` | outros usuários e se estão online |
+| `GET /users` | outros usuários, se estão online e quantas mensagens não lidas há de cada um |
 | `GET /messages/:peer` | últimas 100 mensagens da conversa, já decifradas |
 | `GET /health` | verificação de saúde |
 
-Eventos Socket.IO (conexão com `auth: {token}`): `message` (envia `{receiverId, content, clientId}` com ack; o servidor devolve o evento com o mesmo `clientId`), `typing`, `presence`.
+Eventos Socket.IO (conexão com `auth: {token}`): `read` (`{peerId}`: marca a conversa como lida), `message` (envia `{receiverId, content, clientId}` com ack; o servidor devolve o evento com o mesmo `clientId`), `typing`, `presence`.
 
 ## Escopo
 

@@ -36,6 +36,23 @@ export function attachSockets(io, { prisma, auth, vault, logger, limits }) {
       }
     });
 
+    // O destinatário abriu a conversa: marca como lidas as mensagens que o peer enviou até agora.
+    socket.on("read", async payload => {
+      const { peerId } = payload ?? {};
+      if (!Number.isSafeInteger(peerId) || peerId < 1 || peerId === userId) return;
+      try {
+        const where = { senderId: peerId, receiverId: userId, readAt: null };
+        const { _max } = await prisma.message.aggregate({ where, _max: { id: true } });
+        if (_max.id === null) return;
+        const readAt = new Date();
+        await prisma.message.updateMany({ where: { ...where, id: { lte: _max.id } }, data: { readAt } });
+        // Avisa o remetente (recibo) e as outras abas de quem leu (zera o contador de não lidas).
+        io.to(room(peerId)).to(room(userId)).emit("read", { readerId: userId, peerId, upTo: _max.id, readAt });
+      } catch (error) {
+        logger.warn({ err: error.code ?? error.message, userId }, "falha ao marcar como lida");
+      }
+    });
+
     socket.on("message", async (payload, ack) => {
       if (typeof ack !== "function") return;
       const now = Date.now();
