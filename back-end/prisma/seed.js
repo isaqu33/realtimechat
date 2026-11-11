@@ -40,13 +40,31 @@ try {
       "Bom dia! Conseguiu ver o PR de ontem?", "Vi sim, deixei dois comentários.", "Perfeito, ajusto agora.",
       "O deploy de hoje passou sem problemas.", "Ótimo! Os testes de integração ajudaram.", "Alguém revisou o schema do banco?",
       "Revisei, só faltou um índice.", "Adicionei, pode olhar de novo.", "Aprovado ✅", "Vamos fechar a sprint amanhã?",
+      "Fechado. Quem apresenta a demo?", "Eu apresento, já deixei o roteiro pronto.", "Ficou ótimo o tema escuro, aliás.",
+      "Obrigada! Testei no celular também.", "E a rolagem do histórico, ficou fluida?", "Bem fluida, carrega por páginas.",
+      "Sem repetir mensagem quando a internet cai?", "Isso, o reenvio usa um identificador único.", "Boa, evita duplicar.",
+      "Já rodou o linter no front?", "Rodei, zero avisos.", "E o audit de dependências?", "Limpo nas de produção.",
+      "Quando sobe a versão nova?", "Hoje à tarde, depois do almoço.", "Posso revisar antes?", "Claro, te mando o link do PR.",
+      "Recebi. Dei uma olhada rápida.", "Alguma observação?", "Só um nome de variável, o resto está claro.",
+      "Troco agora mesmo.", "Já subi a correção.", "Perfeito, aprovado.", "Falando em segurança, revisou o rate limit?",
+      "Revisei: 20 tentativas por minuto no login.", "Está bom para uma demo.", "Concordo. Em produção usaria Redis.",
+      "Por causa das várias instâncias, certo?", "Exato, o contador precisa ser compartilhado.", "Faz sentido.",
+      "Anotei isso na documentação.", "Ótimo, ajuda quem for avaliar o projeto.", "Falta alguma tela para o print?",
+      "Talvez a do celular com a lista de contatos.", "Tiro hoje à noite.", "Combinado!", "Conseguiu rodar o Docker aí?",
+      "Rodou de primeira com o compose.", "Que bom! Era a ideia.", "As portas não conflitaram com nada?",
+      "Escolhi 3090 e 3091 para não bater com os outros projetos.", "Boa, cuidadoso.", "Vou subir o seed também.",
+      "Já crio as duas contas de demonstração.", "Assim quem abrir vê conversa pronta.", "Exatamente isso.",
+      "O recibo de leitura já está funcionando?", "Está sim, o visto fica verde quando o outro abre.",
+      "Muito bom para a demo ao vivo.", "Vou testar com duas janelas lado a lado.", "Manda um print depois!",
+      "Mando. Também vou gravar um vídeo curto.", "Ótimo, isso vende bem o projeto.", "Concordo totalmente.",
+      "Fechamos por hoje?", "Fechamos. Bom descanso!", "Até amanhã!", "Até! 👋",
     ];
-    const total = 70;
+    const total = phrases.length;
     const start = Date.now() - 3 * 24 * 3600_000;
     for (let i = 0; i < total; i++) {
       const [sender, receiver] = i % 2 === 0 ? [a, b] : [b, a];
       await prisma.message.create({ data: {
-        senderId: sender.id, receiverId: receiver.id, ...vault.encode(`${phrases[i % phrases.length]} (${i + 1})`),
+        senderId: sender.id, receiverId: receiver.id, ...vault.encode(`${phrases[i % phrases.length]}`),
         timestamp: new Date(start + i * (3 * 24 * 3600_000 - 3600_000) / total), readAt: new Date(start + i * 1000 + 60_000),
       } });
     }
