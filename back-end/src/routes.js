@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res)).catch(next);
+const PAGE_SIZE = 30;
+const MAX_PAGE_SIZE = 100;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // bcrypt só considera os 72 primeiros bytes; recusar acima disso evita senhas "truncadas" em silêncio.
@@ -65,16 +67,29 @@ export function createRoutes({ prisma, auth, vault, isOnline, limits }) {
     res.json(users.map(user => ({ ...user, online: isOnline(user.id), unread: unread.get(user.id) ?? 0 })));
   }));
 
+  // Paginação por cursor: `before` = id da mensagem mais antiga que o cliente já tem.
+  // Cursor por id (e não por página/offset) não repete nem pula itens quando chegam mensagens novas.
   router.get("/messages/:peer", auth.authenticate, asyncRoute(async (req, res) => {
     const peer = Number(req.params.peer);
     const self = req.identity.userId;
+    const limit = req.query.limit === undefined ? PAGE_SIZE : Number(req.query.limit);
+    const before = req.query.before === undefined ? undefined : Number(req.query.before);
     if (!Number.isSafeInteger(peer) || peer < 1 || peer === self) return res.status(400).json({ error: "Contato inválido." });
-    const messages = await prisma.message.findMany({
-      where: { OR: [{ senderId: self, receiverId: peer }, { senderId: peer, receiverId: self }] },
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE ||
+        (before !== undefined && (!Number.isSafeInteger(before) || before < 1))) {
+      return res.status(400).json({ error: "Parâmetros de paginação inválidos." });
+    }
+    // Busca limit + 1 para saber se há mais páginas sem uma segunda consulta (count).
+    const rows = await prisma.message.findMany({
+      where: {
+        OR: [{ senderId: self, receiverId: peer }, { senderId: peer, receiverId: self }],
+        ...(before ? { id: { lt: before } } : {}),
+      },
       orderBy: { id: "desc" },
-      take: 100,
+      take: limit + 1,
     });
-    res.json(messages.reverse().map(vault.decode));
+    const hasMore = rows.length > limit;
+    res.json({ messages: rows.slice(0, limit).reverse().map(vault.decode), hasMore });
   }));
 
   return router;

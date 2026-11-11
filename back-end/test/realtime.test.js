@@ -1,7 +1,8 @@
 import test, { before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { io as connect } from "socket.io-client";
-import { startServer, next, silent, ORIGIN } from "./helpers.js";
+import { startServer, next, silent, SECRET } from "./helpers.js";
+import { createVault } from "../src/vault.js";
 
 let api, ana, beto, carla;
 const send = (socket, payload) => socket.timeout(2000).emitWithAck("message", payload);
@@ -57,14 +58,14 @@ test("o banco guarda só texto cifrado e o histórico decifra", async () => {
   const rows = await api.prisma.message.findMany();
   assert.ok(rows.length > 0);
   assert.equal(rows.some(row => row.content.includes("texto-secreto-xyz")), false);
-  const { body } = await api.call(`/messages/${ana.id}`, { token: beto.token });
+  const { body: { messages: body } } = await api.call(`/messages/${ana.id}`, { token: beto.token });
   assert.ok(body.some(message => message.content === "texto-secreto-xyz"));
 });
 
 test("o histórico só mostra a conversa entre os dois", async () => {
   const c = await api.socketFor(carla.token);
   await send(c, { receiverId: ana.id, content: "carla para ana" });
-  const { body } = await api.call(`/messages/${beto.id}`, { token: ana.token });
+  const { body: { messages: body } } = await api.call(`/messages/${beto.id}`, { token: ana.token });
   assert.equal(body.some(message => message.content === "carla para ana"), false);
 });
 
@@ -112,7 +113,7 @@ test("clientId volta no evento e reenvio com o mesmo clientId não duplica", asy
   assert.deepEqual(await send(a, payload), { ok: true });
   assert.equal((await first).clientId, "abc-12345678");
   assert.deepEqual(await send(a, payload), { ok: true, duplicate: true });
-  const { body } = await api.call(`/messages/${ana.id}`, { token: beto.token });
+  const { body: { messages: body } } = await api.call(`/messages/${ana.id}`, { token: beto.token });
   assert.equal(body.filter(message => message.content === "só uma vez").length, 1);
   assert.ok((await send(a, { receiverId: beto.id, content: "x", clientId: "curto" })).error);
 });
@@ -139,7 +140,7 @@ test("confirmação de leitura: recibo ao remetente, histórico e contador de n�
 
   let { body } = await api.call("/users", { token: x.token });
   assert.equal(body.find(user => user.id === y.id).unread, 2);
-  let history = (await api.call(`/messages/${x.id}`, { token: y.token })).body;
+  let history = (await api.call(`/messages/${x.id}`, { token: y.token })).body.messages;
   assert.equal(history.every(message => message.readAt === null), true);
 
   const receipt = next(sy, "read");
@@ -148,7 +149,7 @@ test("confirmação de leitura: recibo ao remetente, histórico e contador de n�
   assert.equal(event.readerId, x.id);
   assert.equal(event.upTo, history.at(-1).id);
 
-  history = (await api.call(`/messages/${x.id}`, { token: y.token })).body;
+  history = (await api.call(`/messages/${x.id}`, { token: y.token })).body.messages;
   assert.equal(history.every(message => message.readAt), true);
   ({ body } = await api.call("/users", { token: x.token }));
   assert.equal(body.find(user => user.id === y.id).unread, 0);
@@ -169,6 +170,46 @@ test("ninguém marca como lidas as mensagens de outra conversa", async () => {
   await send(sy, { receiverId: x.id, content: "só para o alvo" });
   sz.emit("read", { peerId: y.id }); // z não é o destinatário
   await new Promise(resolve => setTimeout(resolve, 200));
-  const history = (await api.call(`/messages/${x.id}`, { token: y.token })).body;
+  const history = (await api.call(`/messages/${x.id}`, { token: y.token })).body.messages;
   assert.equal(history[0].readAt, null);
+});
+
+test("paginação do histórico por cursor: sem repetir nem pular, com hasMore", async () => {
+  const x = await api.signUp("Paginador"), y = await api.signUp("Volumoso");
+  const vault = createVault(SECRET);
+  await api.prisma.message.createMany({
+    data: Array.from({ length: 25 }, (_, i) => ({
+      senderId: i % 2 ? x.id : y.id, receiverId: i % 2 ? y.id : x.id, ...vault.encode(`c${i}`),
+    })),
+  });
+  const page = (query = "") => api.call(`/messages/${y.id}${query}`, { token: x.token });
+
+  const collected = [];
+  let { body } = await page("?limit=10");
+  assert.equal(body.messages.length, 10);
+  assert.equal(body.hasMore, true);
+  assert.equal(body.messages.at(-1).content, "c24"); // a página mais recente vem primeiro, em ordem cronológica
+  collected.unshift(...body.messages);
+  while (body.hasMore) {
+    ({ body } = await page(`?limit=10&before=${collected[0].id}`));
+    collected.unshift(...body.messages);
+  }
+  assert.deepEqual(collected.map(message => message.content), Array.from({ length: 25 }, (_, i) => `c${i}`));
+  assert.equal(new Set(collected.map(message => message.id)).size, 25);
+  assert.equal(body.hasMore, false);
+
+  // mensagem nova entre as páginas não desloca o cursor
+  const first = (await page("?limit=5")).body.messages;
+  await api.prisma.message.create({ data: { senderId: y.id, receiverId: x.id, ...vault.encode("nova") } });
+  const older = (await page(`?limit=5&before=${first[0].id}`)).body.messages;
+  assert.equal(older.at(-1).id < first[0].id, true);
+  assert.equal(older.some(message => first.some(f => f.id === message.id)), false);
+});
+
+test("paginação valida limit e before", async () => {
+  const x = await api.signUp("Valida"), y = await api.signUp("Parametros");
+  for (const query of ["?limit=0", "?limit=101", "?limit=abc", "?before=abc", "?before=0", "?before=-3"]) {
+    const { status } = await api.call(`/messages/${y.id}${query}`, { token: x.token });
+    assert.equal(status, 400, query);
+  }
 });

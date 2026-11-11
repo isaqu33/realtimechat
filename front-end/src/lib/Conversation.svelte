@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { afterUpdate, createEventDispatcher } from "svelte";
-  import { connected, discard, messages, notifyTyping, outbox, peer, retry, send, session, typing } from "$lib/chat";
+  import { afterUpdate, beforeUpdate, createEventDispatcher } from "svelte";
+  import { connected, discard, hasMore, loadOlder, loadingOlder, messages, notifyTyping, outbox, peer, retry, send, session, typing } from "$lib/chat";
   import Avatar from "$lib/Avatar.svelte";
 
   const dispatch = createEventDispatcher<{ back: void }>();
@@ -33,8 +33,33 @@
   function onKey(event: KeyboardEvent) {
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); }
   }
-  // Mantém a última mensagem visível quando chega algo novo.
-  afterUpdate(() => { if (list) list.scrollTop = list.scrollHeight; });
+  // Rolagem: cola no fim quando já estava no fim (mensagem nova) ou ao trocar de conversa;
+  // ao carregar mensagens antigas no topo, preserva a posição para a tela não "pular".
+  let stickToBottom = true;
+  // Âncora tirada na hora do pedido; é aplicada quando as mensagens antigas realmente entram na lista.
+  let anchor: { height: number; top: number; count: number } | null = null;
+  let lastPeer: number | undefined;
+
+  beforeUpdate(() => {
+    if (!list) return;
+    stickToBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+  });
+  afterUpdate(() => {
+    if (!list) return;
+    if ($peer?.id !== lastPeer) { lastPeer = $peer?.id; stickToBottom = true; }
+    if (anchor) {
+      if ($messages.length > anchor.count) {
+        list.scrollTop = anchor.top + (list.scrollHeight - anchor.height);
+        anchor = null;
+      }
+    } else if (stickToBottom) list.scrollTop = list.scrollHeight;
+  });
+
+  async function onScroll() {
+    if (list.scrollTop > 60 || !$hasMore || $loadingOlder) return;
+    anchor = { height: list.scrollHeight, top: list.scrollTop, count: $messages.length };
+    if (!await loadOlder()) anchor = null;
+  }
 </script>
 
 <section aria-label="Conversa">
@@ -45,7 +70,8 @@
       <div><h2>{$peer.name}</h2><span>{$typing ? "digitando…" : $peer.online ? "online" : "offline"}</span></div>
     </header>
 
-    <div class="scroll" bind:this={list} aria-label="Mensagens" aria-live="polite" role="log">
+    <div class="scroll" bind:this={list} on:scroll={onScroll} aria-label="Mensagens" aria-live="polite" role="log">
+      {#if $hasMore}<p class="older">{$loadingOlder ? "Carregando mensagens anteriores…" : "Role para cima para ver mais"}</p>{/if}
       {#each rows as row, index (row.key)}
         {#if newDay(index)}<div class="day"><span>{dayLabel(row.at ?? "")}</span></div>{/if}
         <div class="line" class:self={row.self}>
@@ -90,6 +116,7 @@
   header span { font-size: .78rem; color: var(--muted); }
   .back { display: none; font-size: 1.6rem; padding: 0 10px; line-height: 1; }
   .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 4px; }
+  .older { align-self: center; margin: 0 0 6px; font-size: .74rem; color: var(--muted); }
   .day { align-self: center; margin: 10px 0; font-size: .72rem; color: var(--muted); }
   .day span { padding: 3px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
   .line { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; }

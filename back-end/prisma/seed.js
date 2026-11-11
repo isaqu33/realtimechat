@@ -35,6 +35,21 @@ try {
     where: { OR: [{ senderId: a.id, receiverId: b.id }, { senderId: b.id, receiverId: a.id }] },
   });
   if (!existing) {
+    // Histórico antigo (3 dias, ~70 mensagens) para demonstrar a paginação ao rolar para cima.
+    const phrases = [
+      "Bom dia! Conseguiu ver o PR de ontem?", "Vi sim, deixei dois comentários.", "Perfeito, ajusto agora.",
+      "O deploy de hoje passou sem problemas.", "Ótimo! Os testes de integração ajudaram.", "Alguém revisou o schema do banco?",
+      "Revisei, só faltou um índice.", "Adicionei, pode olhar de novo.", "Aprovado ✅", "Vamos fechar a sprint amanhã?",
+    ];
+    const total = 70;
+    const start = Date.now() - 3 * 24 * 3600_000;
+    for (let i = 0; i < total; i++) {
+      const [sender, receiver] = i % 2 === 0 ? [a, b] : [b, a];
+      await prisma.message.create({ data: {
+        senderId: sender.id, receiverId: receiver.id, ...vault.encode(`${phrases[i % phrases.length]} (${i + 1})`),
+        timestamp: new Date(start + i * (3 * 24 * 3600_000 - 3600_000) / total), readAt: new Date(start + i * 1000 + 60_000),
+      } });
+    }
     for (const [from, text] of conversation) {
       const [sender, receiver] = from === 0 ? [a, b] : [b, a];
       await prisma.message.create({ data: { senderId: sender.id, receiverId: receiver.id, ...vault.encode(text) } });

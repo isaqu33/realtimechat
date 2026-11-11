@@ -60,10 +60,17 @@ Limite: a memória de ids é por processo; com várias instâncias seria uma cha
 - O front só envia `read` com a aba visível; ao voltar para a aba, marca o que chegou enquanto estava oculta.
 - As não lidas vêm do banco (`GET /users`, uma consulta `groupBy`), então sobrevivem a reload e a novos logins.
 
+## Paginação do histórico
+
+- `GET /messages/:peer?before=<id>&limit=<n>` devolve `{ messages, hasMore }`, da mais antiga para a mais nova. Sem `before`, vem a página mais recente (30).
+- **Cursor por id, não por offset:** mensagens novas chegando enquanto o usuário rola não deslocam as páginas (sem repetir nem pular). Há teste para isso.
+- O servidor busca `limit + 1` linhas para saber se há mais, sem uma segunda consulta de `count`. O índice `(receiverId, senderId, readAt)` e a chave primária mantêm a consulta barata.
+- No front, ao rolar até o topo o `loadOlder` busca a página anterior e a une à lista pelo `id` (sem duplicar). Uma âncora de rolagem (altura e posição antes do pedido) mantém o texto que o usuário estava lendo no mesmo lugar.
+- Em reconexão, a página mais recente é buscada de novo e unida ao que já está na tela, sem apagar as páginas antigas.
+
 ## Próximos passos possíveis
 
 - Estado "entregue" (hoje há enviada e lida) e cursor "lido até" por conversa no lugar de `readAt` por mensagem.
-- Paginação do histórico com rolagem infinita.
 - Redis adapter do Socket.IO e rate limit compartilhado, para rodar com várias instâncias.
 - Reações e anexos.
 

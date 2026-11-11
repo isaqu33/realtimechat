@@ -11,6 +11,9 @@ export const session = writable<Session | null>(null);
 export const contacts = writable<User[]>([]);
 export const peer = writable<User | undefined>();
 export const messages = writable<Message[]>([]);
+/** Há mensagens mais antigas no servidor? (paginação por cursor) */
+export const hasMore = writable(false);
+export const loadingOlder = writable(false);
 export const error = writable("");
 export const status = writable("");
 export const connected = writable(false);
@@ -58,14 +61,17 @@ function markRead() {
 if (typeof document !== "undefined") document.addEventListener("visibilitychange", markRead);
 
 export async function choose(user: User) {
-  if (get(peer)?.id !== user.id) messages.set([]);
+  if (get(peer)?.id !== user.id) { messages.set([]); hasMore.set(false); }
   peer.set(user);
   unread.update(counts => ({ ...counts, [user.id]: 0 }));
   typing.set(false);
   const version = ++conversationVersion;
   try {
-    const history: Message[] = await request(`/messages/${user.id}`);
+    const page: { messages: Message[]; hasMore: boolean } = await request(`/messages/${user.id}`);
+    const history = page.messages;
     if (version === conversationVersion) {
+      // Em reconexão já podemos ter páginas antigas carregadas: só a primeira carga define hasMore.
+      if (!get(messages).length) hasMore.set(page.hasMore);
       messages.update(live => merge(history, live));
       // O servidor é a fonte da verdade das não lidas; ao abrir, marcamos tudo como lido.
       if (history.some(m => m.senderId === user.id && !m.readAt)) {
@@ -75,6 +81,27 @@ export async function choose(user: User) {
     }
   } catch {
     if (version === conversationVersion) error.set("Não foi possível carregar o histórico.");
+  }
+}
+
+/** Carrega a página de mensagens anteriores à mais antiga que já temos. Devolve true se trouxe algo. */
+export async function loadOlder() {
+  const open = get(peer);
+  const oldest = get(messages)[0];
+  if (!open || !oldest || !get(hasMore) || get(loadingOlder)) return false;
+  const version = conversationVersion;
+  loadingOlder.set(true);
+  try {
+    const page: { messages: Message[]; hasMore: boolean } = await request(`/messages/${open.id}?before=${oldest.id}`);
+    if (version !== conversationVersion) return false;
+    hasMore.set(page.hasMore);
+    messages.update(list => merge(page.messages, list));
+    return page.messages.length > 0;
+  } catch {
+    if (version === conversationVersion) error.set("Não foi possível carregar mensagens anteriores.");
+    return false;
+  } finally {
+    loadingOlder.set(false);
   }
 }
 
@@ -154,6 +181,7 @@ export function signOut() {
   peer.set(undefined);
   contacts.set([]);
   messages.set([]);
+  hasMore.set(false);
   status.set("");
   error.set("");
   connected.set(false);
